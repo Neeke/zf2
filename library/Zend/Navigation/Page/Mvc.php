@@ -9,10 +9,10 @@
 
 namespace Zend\Navigation\Page;
 
+use Zend\Mvc\ModuleRouteListener;
 use Zend\Mvc\Router\RouteMatch;
 use Zend\Mvc\Router\RouteStackInterface;
 use Zend\Navigation\Exception;
-use Zend\Mvc\ModuleRouteListener;
 
 /**
  * Represents a page that is defined using controller, action, route
@@ -76,6 +76,13 @@ class Mvc extends AbstractPage
     protected $routeMatch;
 
     /**
+     * If true and set routeMatch than getHref will use routeMatch params
+     * to assemble uri
+     * @var bool
+     */
+    protected $useRouteMatch = false;
+
+    /**
      * Router for assembling URLs
      *
      * @see getHref()
@@ -124,12 +131,16 @@ class Mvc extends AbstractPage
                     $myParams['action'] = $this->action;
                 }
 
-                if (null !== $this->getRoute()
-                    && $this->routeMatch->getMatchedRouteName() === $this->getRoute()
-                    && (count(array_intersect_assoc($reqParams, $myParams)) == count($myParams))
-                ) {
-                    $this->active = true;
-                    return true;
+                if (null !== $this->getRoute()) {
+                    if (
+                        $this->routeMatch->getMatchedRouteName() === $this->getRoute()
+                        && (count(array_intersect_assoc($reqParams, $myParams)) == count($myParams))
+                    ) {
+                        $this->active = true;
+                        return $this->active;
+                    } else {
+                        return parent::isActive($recursive);
+                    }
                 }
             }
 
@@ -190,7 +201,7 @@ class Mvc extends AbstractPage
             );
         }
 
-        if ($this->getRouteMatch() !== null) {
+        if ($this->useRouteMatch() && $this->getRouteMatch()) {
             $rmParams = $this->getRouteMatch()->getParams();
 
             if (isset($rmParams[ModuleRouteListener::ORIGINAL_CONTROLLER])) {
@@ -424,6 +435,30 @@ class Mvc extends AbstractPage
     public function setRouteMatch(RouteMatch $matches)
     {
         $this->routeMatch = $matches;
+        return $this;
+    }
+
+    /**
+     * Get the useRouteMatch flag
+     *
+     * @return bool
+     */
+    public function useRouteMatch()
+    {
+        return $this->useRouteMatch;
+    }
+
+    /**
+     * Set whether the page should use route match params for assembling link uri
+     *
+     * @see getHref()
+     * @param bool $useRouteMatch [optional]
+     * @return Mvc
+     */
+    public function setUseRouteMatch($useRouteMatch = true)
+    {
+        $this->useRouteMatch = (bool) $useRouteMatch;
+        $this->hrefCache = null;
         return $this;
     }
 

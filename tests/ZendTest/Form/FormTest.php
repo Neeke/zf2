@@ -20,6 +20,7 @@ use Zend\InputFilter\InputFilter;
 use Zend\InputFilter\Factory as InputFilterFactory;
 use Zend\Stdlib\Hydrator;
 use ZendTest\Form\TestAsset\Entity;
+use ZendTest\Form\TestAsset\HydratorAwareModel;
 
 class FormTest extends TestCase
 {
@@ -165,6 +166,14 @@ class FormTest extends TestCase
         $this->assertSame($filter, $this->form->getInputFilter());
     }
 
+    /**
+     * @expectedException Zend\Form\Exception\InvalidElementException
+     */
+    public function testShouldThrowExceptionWhenGetInvalidElement()
+    {
+        $this->form->get('doesnt_exist');
+    }
+
     public function testDefaultNonRequiredInputFilterIsSet()
     {
         $this->form->add(new Element('foo'));
@@ -180,6 +189,15 @@ class FormTest extends TestCase
         $inputFilter = $form->getInputFilter();
         $fooInput = $inputFilter->get('foo');
         $this->assertTrue($fooInput->isRequired());
+    }
+
+    public function testInputProviderInterfaceAddsInputFiltersOnlyForSelf()
+    {
+        $form = new TestAsset\InputFilterProviderWithFieldset();
+
+        $inputFilter = $form->getInputFilter();
+        $fieldsetInputFilter = $inputFilter->get('basic_fieldset');
+        $this->assertFalse($fieldsetInputFilter->has('foo'));
     }
 
     public function testCallingIsValidRaisesExceptionIfNoDataSet()
@@ -619,6 +637,20 @@ class FormTest extends TestCase
         $this->form->bind($object);
 
         $this->assertTrue($this->form->isValid());
+    }
+
+    public function testUsesBoundObjectHydratorToPopulateForm()
+    {
+        $this->populateForm();
+        $object = new HydratorAwareModel();
+        $object->setFoo('fooValue');
+        $object->setBar('barValue');
+
+        $this->form->bind($object);
+        $foo = $this->form->get('foo');
+        $this->assertEquals('fooValue', $foo->getValue());
+        $bar = $this->form->get('bar');
+        $this->assertEquals('barValue', $bar->getValue());
     }
 
     public function testBindOnValidateIsTrueByDefault()
@@ -1180,6 +1212,30 @@ class FormTest extends TestCase
         $this->assertTrue($this->form->isValid());
     }
 
+    public function testDonNotApplyEmptyInputFiltersToSubFieldsetOfCollectionElementsWithCollectionInputFilters()
+    {
+        $collectionFieldset = new Fieldset('item');
+        $collectionFieldset->add(new Element('foo'));
+
+        $collection = new Element\Collection('items');
+        $collection->setCount(3);
+        $collection->setTargetElement($collectionFieldset);
+        $this->form->add($collection);
+
+        $inputFilterFactory = new InputFilterFactory();
+        $inputFilter = $inputFilterFactory->createInputFilter(array(
+            'items' => array(
+                'type'         => 'Zend\InputFilter\CollectionInputFilter',
+                'input_filter' => new InputFilter(),
+            ),
+        ));
+
+        $this->form->setInputFilter($inputFilter);
+
+        $this->assertInstanceOf('Zend\InputFilter\CollectionInputFilter', $this->form->getInputFilter()->get('items'));
+        $this->assertCount(1, $this->form->getInputFilter()->get('items')->getInputs());
+    }
+
     public function testFormValidationCanHandleNonConsecutiveKeysOfCollectionInData()
     {
         $dataWithCollection = array(
@@ -1470,5 +1526,20 @@ class FormTest extends TestCase
 
         $this->form->remove('file_resource');
         $this->assertEquals($form, $this->form);
+    }
+
+    public function testNestedFormElementNameWrapping()
+    {
+        //build form
+        $rootForm = new Form;
+        $leafForm = new Form('form');
+        $element = new Element('element');
+        $leafForm->setWrapElements(true);
+        $leafForm->add($element);
+        $rootForm->add($leafForm);
+
+        //prepare for view
+        $rootForm->prepare();
+        $this->assertEquals('form[element]', $element->getName());
     }
 }
